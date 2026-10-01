@@ -269,19 +269,19 @@ verbosity bias và self-preference bằng cách nào?
 Chỉ làm sau khi hoàn thành 3.1–3.3. Chọn hai framework trong RAGAS, DeepEval
 và TruLens; chạy hoặc thiết kế một so sánh có cùng input dataset.
 
-| Tiêu chí | Framework 1: ____ | Framework 2: ____ |
+| Tiêu chí | Framework 1: RAGAS | Framework 2: DeepEval |
 |---|---|---|
-| Setup complexity | | |
-| Metrics available | | |
-| CI/CD integration | | |
-| Kết quả trên cùng dataset | | |
-| Insight rút ra | | |
+| Setup complexity | Cần map records sang question/answer/contexts/ground truth, cấu hình LLM judge và metric. | Cần tạo test cases/LLM test cases, cấu hình judge/metric và ngưỡng; hợp với cấu trúc pytest. |
+| Metrics available | Faithfulness, answer relevancy, context precision/recall cùng các RAG metrics khác. | Faithfulness, answer relevancy, contextual precision/recall cùng các LLM evaluation metrics khác. |
+| CI/CD integration | Chạy evaluation script trong CI rồi tự đặt thresholds và exit status. | Tích hợp dạng test/assertion trong pytest/CI; vẫn cần quản lý thresholds và artifacts. |
+| Kết quả trên cùng dataset | Chưa chạy hai framework; so sánh được thiết kế trên cùng 20 câu, actual answers, gold answers và retrieved contexts. Không ghi số điểm giả. | Chưa chạy hai framework; dùng chính các input của cột RAGAS, cùng judge model/version và cấu hình nếu framework cho phép. |
+| Insight rút ra | Kết quả cần so theo per-case ranking, failure overlap và human labels; không so trực tiếp raw score nếu rubric/prompt khác nhau. | Dùng chung adapter/schema và human-labeled calibration set để xác định khác biệt do metric/judge thay vì input. |
 
-- Scores có nhất quán không?
-- Framework nào strict hơn và vì sao?
-- Hai framework có tìm ra cùng failure cases không?
+- Scores có nhất quán không? Chưa có scores đo thực tế. Protocol: chạy paired trên cùng 20 cases, giữ answer/context/reference, judge model/version và sampling cố định; tính correlation và xem các sai lệch theo case.
+- Framework nào strict hơn và vì sao? Chưa thể kết luận khi chưa chạy. So sánh bằng human labels và false-positive/false-negative trên các case có claim ngoài evidence, policy-date trap, và safe refusal.
+- Hai framework có tìm ra cùng failure cases không? Chưa xác nhận. Dự kiến A01 và M07 là cases cần so kỹ; A02/A03 có thể khác vì lexical/LLM judge xử lý paraphrased refusal khác nhau.
 
-> *Phân tích:*
+> Đây là thiết kế so sánh, chưa phải kết quả benchmark của RAGAS/DeepEval. Nạp cùng 20 QA pairs, actual answers, expected answers và retrieved contexts; chạy các metric tương ứng bằng cùng judge model/version và lưu score từng ID. So sánh metric correlation, top failure overlap và agreement với human labels, đặc biệt cho A01 (retrieval rỗng), M07 (sai policy date dù retrieve đúng) và A02/A03 (refusal đúng nhưng cách diễn đạt khác reference). Nếu raw scores khác, hiệu chỉnh rubric/threshold trên human-labeled set trước khi chọn framework; không suy ra framework nào strict hơn từ tên metric.
 
 ### Exercise 3.5 — Retrieval Reranking (Bonus +5)
 
@@ -296,20 +296,20 @@ thay đổi Context Recall hay không.
 
 | ID | Recall before | Recall after | Precision before | Precision after | Delta Precision |
 |---|---:|---:|---:|---:|---:|
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| **Avg** | | | | | |
+| E01 | 0.923 | 0.923 | 0.833 | 0.833 | +0.000 |
+| E04 | 0.929 | 0.929 | 0.806 | 0.917 | +0.111 |
+| M01 | 0.905 | 0.905 | 1.000 | 1.000 | +0.000 |
+| M07 | 0.905 | 0.905 | 1.000 | 1.000 | +0.000 |
+| A02 | 0.556 | 0.556 | 0.833 | 0.833 | +0.000 |
+| **Avg** | **0.844** | **0.844** | **0.894** | **0.917** | **+0.022** |
 
 **Tại sao Recall dự kiến không đổi?**
 
-> *Câu trả lời:*
+> Recall đo token coverage trên union chunks, không xét thứ tự. Reranker chỉ hoán vị cùng các chunks, không thêm/xóa/chỉnh nội dung, nên union và Context Recall không đổi. Đã kiểm tra cùng tập chunks trước/sau cho cả năm cases.
 
 **Khi nào reranking không đủ và cần sửa retriever/query/chunking?**
 
-> *Câu trả lời:*
+> Reranking không thể lấy lại evidence đã không được retrieve: khi Context Recall thấp, cần query rewriting, hybrid/dense retrieval hoặc tăng candidate pool. Cũng cần sửa chunking nếu policy điều kiện bị tách khỏi ngoại lệ/ngày áp dụng. Kết quả này cho thấy M07 có policy chunk đúng ở top rồi nhưng answer vẫn áp sai version; đó là lỗi generation/date reasoning chứ không phải ranking. E01/M01 đã có precision cao nên rerank không cải thiện; A02 giữ precision nhưng recall còn 0.556, cần thêm scope-overview evidence vào candidate set.
 
 ---
 
@@ -323,11 +323,11 @@ Hoàn thành `reflection.md` bằng kết quả thật từ Exercise 3.2.
 
 Hoàn thành kiểm tra cuối trong khoảng 11:50–12:00.
 
-- [ ] Tất cả required tests pass.
-- [ ] `golden_dataset.json` validate thành công.
-- [ ] Exercise 3.1 hoàn thành trong file JSON và bảng kết quả phía trên.
-- [ ] Exercise 3.2 có năm metrics, aggregate report và ba cases thấp nhất.
-- [ ] Exercise 3.3 có rubric 1–5 và bias controls.
-- [ ] `reflection.md` có ba failure analyses và regression strategy.
-- [ ] Đã copy `template.py` thành `solution/solution.py`.
-- [ ] Exercise 3.4 và 3.5 chỉ làm nếu chọn bonus.
+- [x] Tất cả required tests pass.
+- [x] `golden_dataset.json` validate thành công.
+- [x] Exercise 3.1 hoàn thành trong file JSON và bảng kết quả phía trên.
+- [x] Exercise 3.2 có năm metrics, aggregate report và ba cases thấp nhất.
+- [x] Exercise 3.3 có rubric 1–5 và bias controls.
+- [x] `reflection.md` có ba failure analyses và regression strategy.
+- [x] Đã copy `template.py` thành `solution/solution.py`.
+- [x] Exercise 3.4 và 3.5 chỉ làm nếu chọn bonus.
